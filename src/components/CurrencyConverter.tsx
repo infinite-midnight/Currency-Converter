@@ -1,50 +1,82 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowLeftRight } from 'lucide-react'
 import { AmountInput } from '@/features/currencies/AmountInput'
 import { CurrencySelect } from '@/features/currencies/CurrencySelect'
 import { useCurrencies } from '@/features/currencies/useCurrencies'
-import type { Currency } from '@/features/currencies/service'
 import { ConversionResult } from '@/features/conversion/ConversionResult'
 import { useConversion } from '@/features/conversion/useConversion'
+import { useLocalStorage } from "@/hooks/useLocalStorage.ts";
 
 // Guards against the stored code not existing in the loaded list (before currencies arrive).
-function resolveCode(code: string, currencies: Currency[], fallbackIndex: number): string {
-  if (currencies.length === 0) return code
-  if (currencies.some((c) => c.code === code)) return code
-  return currencies[fallbackIndex]?.code ?? currencies[0].code
-}
+// function resolveCode(code: string, currencies: Currency[], fallbackIndex: number): string {
+//   if (currencies.length === 0) return code
+//   if (currencies.some((c) => c.code === code)) return code
+//   return currencies[fallbackIndex]?.code ?? currencies[0].code
+// }
 
 export function CurrencyConverter() {
-  const [from, setFrom] = useState('USD')
-  const [to, setTo] = useState('EUR')
-  const [amount, setAmount] = useState(1)
+  const [from, setFrom] = useLocalStorage('cc-from', '')
+  const [to, setTo] = useLocalStorage('cc-to', '')
+  const [direction, setDirection] = useState<'from' | 'to'>('from')
+  const [activeAmount, setActiveAmount] = useLocalStorage('cc-amount', 1)
 
   const { data: currencies = [], isLoading: loadingCurrencies, isError: currenciesError } = useCurrencies()
 
-  const fromCode = resolveCode(from, currencies, 0)
-  const toCode = resolveCode(to, currencies, 1)
-  const conversion = useConversion(fromCode, toCode, amount)
+  // const [from, setFrom] = useState('USD')
+  // const [to, setTo] = useState('EUR')
+  // const [amount, setAmount] = useState(1)
 
-  const fromCurrency = currencies.find((c) => c.code === fromCode)
-  const toCurrency = currencies.find((c) => c.code === toCode)
+  // const fromCode = resolveCode(from, currencies, 0)
+  // const toCode = resolveCode(to, currencies, 1)
+  // const conversion = useConversion(fromCode, toCode, amount)
 
-  function firstOtherThan(exclude: string): string {
-    return currencies.find((c) => c.code !== exclude)?.code ?? exclude
-  }
+
+  useEffect(() => {
+    if (from || currencies.length < 2) return
+    setFrom(currencies[0].code)
+    setTo(currencies[1].code)
+  }, [currencies, from, setFrom, setTo])
+
+  const convFrom = direction === 'from' ? from : to;
+  const convTo = direction === 'from' ? to : from;
+  const conversion = useConversion(convFrom, convTo, activeAmount)
+
+  // TODO refactor later
+  const fromDisplayAmount = direction === 'from' ? activeAmount : (conversion.data?.value ?? 0)
+  const toDisplayAmount = direction === 'to' ? activeAmount : (conversion.data?.value ?? 0)
+
+  const fromCurrency = currencies.find((c) => c.code === from)
+  const toCurrency = currencies.find((c) => c.code === to)
+
+
+  // function firstOtherThan(exclude: string): string {
+  //   return currencies.find((c) => c.code !== exclude)?.code ?? exclude
+  // }
 
   function handleFromChange(code: string) {
+    if (code === to) setTo(from)
     setFrom(code)
-    setTo((prev) => (code === prev ? firstOtherThan(code) : prev))
   }
 
   function handleToChange(code: string) {
+    if (code === from) setFrom(to)
     setTo(code)
-    setFrom((prev) => (code === prev ? firstOtherThan(code) : prev))
   }
 
   function handleSwap() {
     setFrom(to)
     setTo(from)
+    setDirection('from')
+  }
+
+  function handleFromAmountChange(value: number) {
+    setDirection('from')
+    setActiveAmount(value)
+  }
+
+  function handleToAmountChange(value: number) {
+    setDirection('to')
+    setActiveAmount(value)
   }
 
   if (currenciesError) {
@@ -68,11 +100,11 @@ export function CurrencyConverter() {
               <CurrencySelect
                 label="From"
                 currencies={currencies}
-                value={fromCode}
+                value={from}
                 onChange={handleFromChange}
-                excludeCode={toCode}
+                excludeCode={to}
               />
-              <AmountInput label="Amount" value={amount} onChange={setAmount} currency={fromCurrency} />
+              <AmountInput label="Amount" value={fromDisplayAmount} onChange={handleFromAmountChange} currency={fromCurrency} />
             </div>
 
             <button
@@ -87,15 +119,15 @@ export function CurrencyConverter() {
               <CurrencySelect
                 label="To"
                 currencies={currencies}
-                value={toCode}
+                value={to}
                 onChange={handleToChange}
-                excludeCode={fromCode}
+                excludeCode={from}
               />
               <AmountInput
                 label="Converted"
-                value={conversion.data?.value ?? 0}
+                value={toDisplayAmount}
+                onChange={handleToAmountChange}
                 currency={toCurrency}
-                readOnly
               />
             </div>
           </div>
